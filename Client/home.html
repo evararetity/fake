@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>TeraRave</title>
+
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+</head>
+
+<body>
+    <form id="msform" method="post" action="/transactionInitForm">
+
+        <span id="km">
+            <button type="button" id="distKM" name="distKM"><i class="fa fa-ellipsis-h "></i></button><span>KM</span>
+        </span>
+        <span id="min">
+            <button type="button" id="maxMin" name="minPrice"><i class="fa fa-ellipsis-h "></i></button><span>MIN</span>
+        </span>
+        <span id="max">
+            <button type="button" id="maxMin" name="maxPrice"><i class="fa fa-ellipsis-h"></i></button><span>MAX</span>
+        </span>
+
+        <fieldset>
+            <h2 class="fs-title">Get Bargain Price Range</h2>
+            <input id="origin" onFocus="geolocate()" name="from" type="text" placeholder="From:" spellcheck="false" id="from" />
+            <input id="destination" onFocus="geolocate()" name="to" type="text" placeholder="To:" spellcheck="false" id="to" />
+            <input type="hidden" id="fits_inn" name="fits_inn" />
+            <input type="hidden" id="minPrice" name="minPrice" />
+            <input type="hidden" id="maxPrice" name="maxPrice" />
+            <input type="hidden" id="distance" name="distance" />
+            <input type="hidden" id="fixedPrice" name="fixedPrice" />
+            <select id="fits_in" required >
+                <option value="">Pickup Options</option>
+                <option value="car">Car should pickup</option>
+                <option value="van">Van should pick up</option>
+                <option value="truck">Truck should pickup</option>
+            </select>
+            <input type="submit" class="action-button" value="Proceed" />
+            <p>Your fixed price is <strong><i style="color: rgb(223, 216, 130)">₦0.00</i></strong> </p>
+        </fieldset>
+    </form>
+
+    <script>
+        /* Google Place API */
+        var origin, destination,
+            input = document.getElementById('origin'),
+            input2 = document.getElementById('destination'),
+            options = {
+                types: ['geocode']
+            };
+
+        function initAutocomplete() {
+            origin = new google.maps.places.Autocomplete(input, options);
+            destination = new google.maps.places.Autocomplete(input2, options);
+
+            origin.setComponentRestrictions({
+                'country': ['ng']
+            });
+            destination.setComponentRestrictions({
+                'country': ['ng']
+            });
+
+            destination.addListener('place_changed', fillInAddress);
+        }
+
+        function fillInAddress() {
+            // Get the place details from the autocomplete object.
+            var lat = origin.getPlace().geometry.location.lat(),
+                lng = origin.getPlace().geometry.location.lng(),
+                LatLng = {
+                    lat: lat,
+                    lng: lng
+                };
+
+            /* console.log(LatLng) */
+
+            var lat2 = destination.getPlace().geometry.location.lat(),
+                lng2 = destination.getPlace().geometry.location.lng(),
+                LatLng2 = {
+                    lat: lat2,
+                    lng: lng2
+                };
+
+            /* console.log(LatLng2) */
+
+            var bounds = new google.maps.LatLngBounds;
+
+            var service = new google.maps.DistanceMatrixService;
+
+            service.getDistanceMatrix({
+                origins: [LatLng],
+                destinations: [LatLng2],
+                travelMode: 'DRIVING',
+                unitSystem: google.maps.UnitSystem.METRIC,
+                avoidHighways: false,
+                avoidTolls: false
+            }, function(response, status) {
+                if (status !== 'OK') {
+                    console.log('Error was: ' + status);
+                } else {
+                    var originList = response.originAddresses;
+                    var destinationList = response.destinationAddresses;
+                    var results = response.rows[0].elements
+
+                    console.log(originList + " to " + destinationList + " is " + results[0].distance.text + " and will take you " + results[0].duration.text)
+                    MaxMinPrice(results[0].distance.text)
+                }
+            });
+        }
+
+        function geolocate() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function(position) {
+                    var geolocation = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    var circle = new google.maps.Circle({
+                        center: geolocation,
+                        radius: position.coords.accuracy
+                    });
+                    origin.setBounds(circle.getBounds());
+                    destination.setBounds(circle.getBounds());
+                });
+            }
+        }
+
+        /* AJAX Allowance */
+        function MaxMinPrice(theResult) {
+            $("select#fits_in").change(function() {
+                selected = $("#fits_in option:selected").val();
+                /* console.log("You have selected - " + selected); */
+
+                $.ajax({
+                    type: "post",
+                    url: "https://fwq6b4d809.execute-api.us-east-1.amazonaws.com/dev/get-price",
+                    data: {
+                        distance: theResult,
+                        fitsIn: selected
+                    },
+                    success: function(data) {
+                        if (data.status == 1) {
+                            $("#msform #km").html(data.distance)
+                            $("#msform #min").html(data.minPrice)
+                            $("#msform #max").html(data.maxPrice)
+                            $("#msform fieldset p strong").html(data.fixedPrice);
+                            $("#msform fieldset #fits_inn").val(selected);
+                            $("#msform fieldset #distance").val(data.rawDistance);
+                            $("#msform fieldset #minPrice").val(data.rawMinPrice);
+                            $("#msform fieldset #maxPrice").val(data.rawMaxPrice);
+                            $("#msform fieldset #fixedPrice").val(data.rawFixedPrice);
+                            /* console.log(data)  */
+                        } else if (data.status == 0) {
+                            console.log("Please fill all the form")
+                        }
+                    }
+                })
+            });
+        }
+    </script>
+
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCkJ4kAfW-Rp6vlqlo-nkdrWaF8MGcH_bc&libraries=places&callback=initAutocomplete" async defer></script>
+</body>
+</html>
+
+<!-- Please consider minutes too as a feature of the map -->
